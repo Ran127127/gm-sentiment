@@ -24,11 +24,30 @@ def create_app(config_name=None):
     # 配置定时任务
     _configure_scheduler(app)
 
-    # 确保数据库表已创建（开发环境）
+    # 确保数据库表已创建
     with app.app_context():
         db.create_all()
 
+        # 自动种子：若数据库为空则自动填充Mock数据
+        _auto_seed_if_empty(app)
+
     return app
+
+
+def _auto_seed_if_empty(app):
+    """若数据库无品牌数据，自动填充种子数据"""
+    try:
+        from app.models import Brand
+        if Brand.query.count() == 0:
+            app.logger.info("数据库为空，开始自动填充种子数据...")
+            from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
+            seed_brands()
+            seed_data_sources()
+            seed_mock_articles(days=15)  # 生产环境减少数据量
+            seed_daily_summaries()
+            app.logger.info("种子数据填充完成")
+    except Exception as e:
+        app.logger.warning(f"自动种子数据失败（不影响启动）: {e}")
 
 
 def _configure_scheduler(app):

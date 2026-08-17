@@ -1,5 +1,7 @@
 import os
+import sys
 import threading
+import traceback
 from flask import Flask, jsonify
 from app.config import config_map
 from app.extensions import db, migrate, jwt, cors, scheduler
@@ -18,47 +20,59 @@ def create_app(config_name=None):
     jwt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
 
-    # 注册蓝图
-    from app.api import api_bp
-    app.register_blueprint(api_bp)
-
-    # 轻量级健康检查端点（不依赖数据库）
+    # 健康检查端点 —— 必须最先注册，确保快速响应
     @app.route("/api/health")
     def health_check():
-        return jsonify({"status": "ok"})
+        return jsonify({"status": "ok", "config": config_name})
 
-    # 配置定时任务
-    _configure_scheduler(app)
+    # 注册蓝图
+    try:
+        from app.api import api_bp
+        app.register_blueprint(api_bp)
+    except Exception as e:
+        print(f"[ERROR] Failed to register blueprints: {e}", file=sys.stderr)
+        traceback.print_exc()
 
-    # 确保数据库表已创建
-    with app.app_context():
-        db.create_all()
+    # 数据库初始化
+    try:
+        with app.app_context():
+            db.create_all()
+    except Exception as e:
+        print(f"[ERROR] db.create_all() failed: {e}", file=sys.stderr)
 
-        # 后台线程自动种子：不阻塞启动
-        _auto_seed_background(app)
+    # 后台种子数据（仅在有数据库时）
+    try:
+        with app.app_context():
+            from app.models import Brand
+            if Brand.query.count() == 0:
+                t = threading.Thread(target=_seed_background, args=(app,), daemon=True)
+                t.start()
+    except Exception as e:
+        print(f"[WARN] Seed check failed: {e}", file=sys.stderr)
+
+    # 调度器（仅开发环境启用）
+    if config_name == "development":
+        try:
+            _configure_scheduler(app)
+        except Exception as e:
+            print(f"[WARN] Scheduler failed: {e}", file=sys.stderr)
 
     return app
 
 
-def _auto_seed_background(app):
-    """在后台线程中检查并填充种子数据，不阻塞服务启动"""
-    def _seed_worker():
+def _seed_background(app):
+    """后台线程填充种子数据"""
+    try:
         with app.app_context():
-            try:
-                from app.models import Brand
-                if Brand.query.count() == 0:
-                    app.logger.info("数据库为空，开始后台填充种子数据...")
-                    from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
-                    seed_brands()
-                    seed_data_sources()
-                    seed_mock_articles(days=15)
-                    seed_daily_summaries()
-                    app.logger.info("种子数据填充完成")
-            except Exception as e:
-                app.logger.warning(f"自动种子数据失败（不影响启动）: {e}")
-
-    t = threading.Thread(target=_seed_worker, daemon=True)
-    t.start()
+            print("[INFO] Starting background seed data...", file=sys.stderr)
+            from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
+            seed_brands()
+            seed_data_sources()
+            seed_mock_articles(days=15)
+            seed_daily_summaries()
+            print("[INFO] Seed data complete!", file=sys.stderr)
+    except Exception as e:
+        print(f"[WARN] Seed failed: {e}", file=sys.stderr)
 
 
 def _configure_scheduler(app):

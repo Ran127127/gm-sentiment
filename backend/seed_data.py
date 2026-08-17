@@ -294,7 +294,7 @@ def seed_mock_articles(days=30):
 
 
 def seed_daily_summaries():
-    """根据已有文章数据生成每日汇总"""
+    """根据已有文章数据生成每日汇总（品牌级 + 车型级）"""
     today = date.today()
     brands = Brand.query.all()
     sources = DataSource.query.all()
@@ -351,8 +351,46 @@ def seed_daily_summaries():
             db.session.add(summary)
             count += 1
 
+            # 车型级每日汇总
+            models = CarModel.query.filter_by(brand_id=brand.id).all()
+            for model in models:
+                model_articles = [a for a in articles if a.model_id == model.id]
+                if not model_articles:
+                    continue
+
+                model_aids = [a.id for a in model_articles]
+                model_sentiments = [s for s in sentiments if s.target_id in model_aids]
+
+                m_total = len(model_articles)
+                m_positive = len([s for s in model_sentiments if s.label == "positive"])
+                m_negative = len([s for s in model_sentiments if s.label == "negative"])
+                m_neutral = len([s for s in model_sentiments if s.label == "neutral"])
+                m_avg = (sum(s.score for s in model_sentiments) / len(model_sentiments)) if model_sentiments else 0.5
+
+                m_kw_freq = {}
+                for s in model_sentiments:
+                    if s.keywords:
+                        for kw in s.keywords:
+                            m_kw_freq[kw] = m_kw_freq.get(kw, 0) + 1
+                m_hot_keywords = [k for k, _ in sorted(m_kw_freq.items(), key=lambda x: -x[1])[:10]]
+
+                model_summary = DailySummary(
+                    date=current_date,
+                    brand_id=brand.id,
+                    model_id=model.id,
+                    source_id=None,
+                    total_count=m_total,
+                    positive_count=m_positive,
+                    negative_count=m_negative,
+                    neutral_count=m_neutral,
+                    avg_score=m_avg,
+                    hot_keywords=m_hot_keywords,
+                )
+                db.session.add(model_summary)
+                count += 1
+
     db.session.commit()
-    print(f"  生成 {count} 条每日汇总")
+    print(f"  生成 {count} 条每日汇总（品牌+车型）")
 
 
 def run_seed():

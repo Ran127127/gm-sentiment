@@ -15,3 +15,7 @@ export function getBrandModels(id) {
 export function getBrandSummary(id, params) {
   return request.get(`/brands/${id}/summary`, { params })
 }
+
+export function getModelDetail(id, params) {
+  return request.get(`/models/${id}`, { params })
+}

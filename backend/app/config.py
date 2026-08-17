@@ -42,16 +42,17 @@ class DevelopmentConfig(BaseConfig):
 class ProductionConfig(BaseConfig):
     DEBUG = False
     # Render提供PostgreSQL，通过DATABASE_URL环境变量传入
-    # 本地部署默认MySQL
+    # 若无DATABASE_URL则回退到SQLite（Render免费方案无PostgreSQL）
     _raw_url = os.getenv("DATABASE_URL", "")
     if _raw_url and ("postgres" in _raw_url or "psycopg2" in _raw_url):
         # Render PostgreSQL
         SQLALCHEMY_DATABASE_URI = _normalize_db_url(_raw_url)
+    elif _raw_url:
+        # 其他数据库URL（MySQL等）
+        SQLALCHEMY_DATABASE_URI = _raw_url
     else:
-        # 本地MySQL或默认
-        SQLALCHEMY_DATABASE_URI = _raw_url or (
-            "mysql+pymysql://gm_app:password@localhost/gm_sentiment?charset=utf8mb4"
-        )
+        # 回退到SQLite（适用于Render免费方案）
+        SQLALCHEMY_DATABASE_URI = "sqlite:///gm_sentiment.db"
 
 
 class TestingConfig(BaseConfig):

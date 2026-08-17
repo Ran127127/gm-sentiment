@@ -13,7 +13,6 @@ from app import create_app
 from app.extensions import db
 from app.models import Brand, CarModel, DataSource, Article, Comment, SentimentResult, DailySummary
 from scraper.mock_generator import BRAND_MODELS, DATA_SOURCES, generate_article
-from sentiment.analyzer import ChineseSentimentAnalyzer
 
 
 def seed_brands():
@@ -55,8 +54,150 @@ def seed_data_sources():
     db.session.commit()
 
 
+def seed_mock_articles_lightweight(days=7):
+    """轻量级Mock文章生成 —— 不导入SnowNLP/jieba，使用预计算情感分数
+    专为Render免费设计，避免NLP库导致OOM"""
+    today = date.today()
+    count = 0
+
+    for day_offset in range(days):
+        current_date = today - timedelta(days=day_offset)
+
+        for brand_name, brand_info in BRAND_MODELS.items():
+            article_count = random.randint(2, 4)
+
+            for _ in range(article_count):
+                model = random.choice(brand_info["models"])
+                source_data = random.choice(DATA_SOURCES)
+                source = DataSource.query.filter_by(name=source_data["name"]).first()
+                brand = Brand.query.filter_by(name_cn=brand_name).first()
+                car_model = CarModel.query.filter_by(
+                    brand_id=brand.id, name_cn=model["name_cn"]
+                ).first() if brand else None
+
+                # 随机情感倾向
+                sentiment_bias = random.choices(
+                    ["positive", "negative", "neutral"],
+                    weights=[0.5, 0.2, 0.3],
+                )[0]
+
+                article_data = generate_article(brand_name, model, source_data, sentiment_bias)
+                article_data["publish_time"] = datetime.combine(
+                    current_date,
+                    datetime.min.time().replace(
+                        hour=random.randint(6, 23),
+                        minute=random.randint(0, 59),
+                    )
+                )
+
+                # 检查去重
+                existing = Article.query.filter_by(
+                    source_id=source.id, url=article_data["url"]
+                ).first()
+                if existing:
+                    continue
+
+                article = Article(
+                    source_id=source.id,
+                    brand_id=brand.id if brand else None,
+                    model_id=car_model.id if car_model else None,
+                    title=article_data["title"],
+                    content=article_data["content"],
+                    summary=article_data["summary"],
+                    url=article_data["url"],
+                    author=article_data["author"],
+                    publish_time=article_data["publish_time"],
+                    view_count=article_data["view_count"],
+                    like_count=article_data["like_count"],
+                    comment_count=article_data["comment_count"],
+                    share_count=article_data["share_count"],
+                )
+                db.session.add(article)
+                db.session.flush()
+
+                # 预计算情感分数（不调用NLP）
+                if sentiment_bias == "positive":
+                    score = round(random.uniform(0.65, 0.95), 4)
+                    label = "positive"
+                elif sentiment_bias == "negative":
+                    score = round(random.uniform(0.1, 0.35), 4)
+                    label = "negative"
+                else:
+                    score = round(random.uniform(0.4, 0.6), 4)
+                    label = "neutral"
+
+                # 随机方面分数
+                aspect_names = ["外观", "内饰", "动力", "空间", "性价比", "操控", "舒适性"]
+                aspects = {}
+                for asp in aspect_names:
+                    if sentiment_bias == "positive":
+                        aspects[asp] = round(random.uniform(0.5, 0.95), 2)
+                    elif sentiment_bias == "negative":
+                        aspects[asp] = round(random.uniform(0.1, 0.45), 2)
+                    else:
+                        aspects[asp] = round(random.uniform(0.35, 0.65), 2)
+
+                # 随机关键词
+                kw_pool = {
+                    "positive": ["空间大", "油耗低", "性价比高", "配置丰富", "外观大气", "动力充沛", "隔音好"],
+                    "negative": ["油耗高", "异响", "做工粗糙", "空间小", "起步肉", "刹车偏软", "噪音大"],
+                    "neutral": ["表现均衡", "中规中矩", "够用", "尚可", "一般"],
+                }
+                keywords = random.sample(kw_pool[sentiment_bias], min(3, len(kw_pool[sentiment_bias])))
+
+                sentiment = SentimentResult(
+                    target_type="article",
+                    target_id=article.id,
+                    score=score,
+                    label=label,
+                    keywords=keywords,
+                    aspects=aspects,
+                    model_version="lightweight_v1",
+                )
+                db.session.add(sentiment)
+
+                # 评论（同样使用预计算分数）
+                for c_data in article_data.get("comments", []):
+                    comment = Comment(
+                        article_id=article.id,
+                        content=c_data["content"],
+                        author=c_data["author"],
+                        like_count=c_data["like_count"],
+                    )
+                    db.session.add(comment)
+                    db.session.flush()
+
+                    # 评论情感分数基于文章倾向加随机偏移
+                    c_score = max(0.01, min(0.99, score + random.uniform(-0.15, 0.15)))
+                    c_score = round(c_score, 4)
+                    if c_score > 0.6:
+                        c_label = "positive"
+                    elif c_score < 0.4:
+                        c_label = "negative"
+                    else:
+                        c_label = "neutral"
+
+                    c_sentiment = SentimentResult(
+                        target_type="comment",
+                        target_id=comment.id,
+                        score=c_score,
+                        label=c_label,
+                        keywords=random.sample(keywords, min(2, len(keywords))),
+                        aspects={},
+                        model_version="lightweight_v1",
+                    )
+                    db.session.add(c_sentiment)
+
+                count += 1
+
+    db.session.commit()
+    print(f"  [轻量级] 生成 {count} 篇文章及评论（无NLP）")
+    return count
+
+
 def seed_mock_articles(days=30):
-    """生成Mock文章数据"""
+    """生成Mock文章数据（完整版，使用SnowNLP情感分析）"""
+    from sentiment.analyzer import ChineseSentimentAnalyzer
     analyzer = ChineseSentimentAnalyzer()
     today = date.today()
     count = 0

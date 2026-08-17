@@ -36,11 +36,16 @@
     <div class="section">
       <h3>车型列表</h3>
       <div class="model-grid">
-        <div v-for="model in models" :key="model.id" class="model-card">
+        <router-link
+          v-for="model in models"
+          :key="model.id"
+          :to="`/model/${model.id}`"
+          class="model-card"
+        >
           <span class="model-name">{{ model.name_cn }}</span>
           <span class="model-en">{{ model.name_en }}</span>
           <el-tag size="small" type="info">{{ model.category }}</el-tag>
-        </div>
+        </router-link>
       </div>
     </div>
 
@@ -208,6 +213,15 @@ function getSentimentLabel(label) {
   padding: 12px;
   border: 1px solid #eee;
   border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover {
+    border-color: #1890ff;
+    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+    transform: translateY(-2px);
+  }
   .model-name { font-weight: 600; }
   .model-en { font-size: 12px; color: #999; }
 }

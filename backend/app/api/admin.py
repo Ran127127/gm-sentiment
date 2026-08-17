@@ -44,18 +44,20 @@ def trigger_scraping():
 
 @api_bp.route("/admin/seed", methods=["POST"])
 def seed_data():
-    """初始化种子数据（公开接口，MVP演示用）"""
+    """初始化种子数据（公开接口，MVP演示用）—— 使用轻量级模式，不调用NLP"""
     try:
-        from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
+        from seed_data import seed_brands, seed_data_sources, seed_mock_articles_lightweight, seed_daily_summaries
         from app.models import Brand
         if Brand.query.count() > 0:
             return success_response(message="种子数据已存在，无需重复初始化")
         seed_brands()
         seed_data_sources()
-        seed_mock_articles(days=7)
+        seed_mock_articles_lightweight(days=7)
         seed_daily_summaries()
-        return success_response(message="种子数据初始化成功")
+        return success_response(message="种子数据初始化成功（轻量级模式）")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return error_response(f"种子数据初始化失败: {str(e)}", 500)
 
 

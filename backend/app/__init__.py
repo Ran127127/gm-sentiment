@@ -1,5 +1,6 @@
 import os
-from flask import Flask
+import threading
+from flask import Flask, jsonify
 from app.config import config_map
 from app.extensions import db, migrate, jwt, cors, scheduler
 
@@ -21,6 +22,11 @@ def create_app(config_name=None):
     from app.api import api_bp
     app.register_blueprint(api_bp)
 
+    # 轻量级健康检查端点（不依赖数据库）
+    @app.route("/api/health")
+    def health_check():
+        return jsonify({"status": "ok"})
+
     # 配置定时任务
     _configure_scheduler(app)
 
@@ -28,26 +34,31 @@ def create_app(config_name=None):
     with app.app_context():
         db.create_all()
 
-        # 自动种子：若数据库为空则自动填充Mock数据
-        _auto_seed_if_empty(app)
+        # 后台线程自动种子：不阻塞启动
+        _auto_seed_background(app)
 
     return app
 
 
-def _auto_seed_if_empty(app):
-    """若数据库无品牌数据，自动填充种子数据"""
-    try:
-        from app.models import Brand
-        if Brand.query.count() == 0:
-            app.logger.info("数据库为空，开始自动填充种子数据...")
-            from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
-            seed_brands()
-            seed_data_sources()
-            seed_mock_articles(days=15)  # 生产环境减少数据量
-            seed_daily_summaries()
-            app.logger.info("种子数据填充完成")
-    except Exception as e:
-        app.logger.warning(f"自动种子数据失败（不影响启动）: {e}")
+def _auto_seed_background(app):
+    """在后台线程中检查并填充种子数据，不阻塞服务启动"""
+    def _seed_worker():
+        with app.app_context():
+            try:
+                from app.models import Brand
+                if Brand.query.count() == 0:
+                    app.logger.info("数据库为空，开始后台填充种子数据...")
+                    from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
+                    seed_brands()
+                    seed_data_sources()
+                    seed_mock_articles(days=15)
+                    seed_daily_summaries()
+                    app.logger.info("种子数据填充完成")
+            except Exception as e:
+                app.logger.warning(f"自动种子数据失败（不影响启动）: {e}")
+
+    t = threading.Thread(target=_seed_worker, daemon=True)
+    t.start()
 
 
 def _configure_scheduler(app):

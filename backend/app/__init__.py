@@ -1,7 +1,5 @@
 import os
 import sys
-import threading
-import traceback
 from flask import Flask, jsonify
 from app.config import config_map
 from app.extensions import db, migrate, jwt, cors, scheduler
@@ -40,16 +38,6 @@ def create_app(config_name=None):
     except Exception as e:
         print(f"[ERROR] db.create_all() failed: {e}", file=sys.stderr)
 
-    # 后台种子数据（仅在有数据库时）
-    try:
-        with app.app_context():
-            from app.models import Brand
-            if Brand.query.count() == 0:
-                t = threading.Thread(target=_seed_background, args=(app,), daemon=True)
-                t.start()
-    except Exception as e:
-        print(f"[WARN] Seed check failed: {e}", file=sys.stderr)
-
     # 调度器（仅开发环境启用）
     if config_name == "development":
         try:
@@ -58,21 +46,6 @@ def create_app(config_name=None):
             print(f"[WARN] Scheduler failed: {e}", file=sys.stderr)
 
     return app
-
-
-def _seed_background(app):
-    """后台线程填充种子数据"""
-    try:
-        with app.app_context():
-            print("[INFO] Starting background seed data...", file=sys.stderr)
-            from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
-            seed_brands()
-            seed_data_sources()
-            seed_mock_articles(days=15)
-            seed_daily_summaries()
-            print("[INFO] Seed data complete!", file=sys.stderr)
-    except Exception as e:
-        print(f"[WARN] Seed failed: {e}", file=sys.stderr)
 
 
 def _configure_scheduler(app):

@@ -5,9 +5,9 @@ from app.extensions import db
 class SentimentResult(db.Model):
     __tablename__ = "sentiment_results"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     target_type = db.Column(db.String(10), nullable=False)  # 'article' or 'comment'
-    target_id = db.Column(db.BigInteger, nullable=False)
+    target_id = db.Column(db.Integer, nullable=False)
     score = db.Column(db.Float, nullable=False)  # 0.0~1.0
     label = db.Column(db.String(10), nullable=False)  # positive/negative/neutral
     keywords = db.Column(db.JSON)  # ["空间大", "油耗低"]

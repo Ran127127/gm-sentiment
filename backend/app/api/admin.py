@@ -31,7 +31,7 @@ def trigger_scraping():
     """手动触发数据抓取"""
     source_id = request.args.get("source_id", type=int)
     if not source_id:
-        return error_response("请指定source_id")
+        return error_response("请指定source_id", 400)
 
     from scraper.pipeline import ScrapingPipeline
     pipeline = ScrapingPipeline()
@@ -40,6 +40,23 @@ def trigger_scraping():
         return success_response({"items_scraped": count})
     except Exception as e:
         return error_response(f"抓取失败: {str(e)}", 500)
+
+
+@api_bp.route("/admin/seed", methods=["POST"])
+def seed_data():
+    """初始化种子数据（公开接口，MVP演示用）"""
+    try:
+        from seed_data import seed_brands, seed_data_sources, seed_mock_articles, seed_daily_summaries
+        from app.models import Brand
+        if Brand.query.count() > 0:
+            return success_response(message="种子数据已存在，无需重复初始化")
+        seed_brands()
+        seed_data_sources()
+        seed_mock_articles(days=7)
+        seed_daily_summaries()
+        return success_response(message="种子数据初始化成功")
+    except Exception as e:
+        return error_response(f"种子数据初始化失败: {str(e)}", 500)
 
 
 @api_bp.route("/admin/system-stats", methods=["GET"])

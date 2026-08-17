@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from '../views/Dashboard.vue'
 import BrandDetail from '../views/BrandDetail.vue'
+import ModelDetail from '../views/ModelDetail.vue'
 import ArticleList from '../views/ArticleList.vue'
 import ArticleDetail from '../views/ArticleDetail.vue'
 import Recommendations from '../views/Recommendations.vue'
@@ -16,6 +17,12 @@ const routes = [
     path: '/brand/:id',
     name: 'BrandDetail',
     component: BrandDetail,
+    props: true,
+  },
+  {
+    path: '/model/:id',
+    name: 'ModelDetail',
+    component: ModelDetail,
     props: true,
   },
   {

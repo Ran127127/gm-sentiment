@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 from flask import Flask, jsonify
 from app.config import config_map
 from app.extensions import db, migrate, jwt, cors, scheduler
@@ -31,12 +32,13 @@ def create_app(config_name=None):
         print(f"[ERROR] Failed to register blueprints: {e}", file=sys.stderr)
         traceback.print_exc()
 
-    # 数据库初始化
+    # 数据库初始化（含schema迁移检查）
     try:
         with app.app_context():
-            db.create_all()
+            _check_and_migrate_schema()
     except Exception as e:
-        print(f"[ERROR] db.create_all() failed: {e}", file=sys.stderr)
+        print(f"[ERROR] DB init failed: {e}", file=sys.stderr)
+        traceback.print_exc()
 
     # 调度器（仅开发环境启用）
     if config_name == "development":
@@ -46,6 +48,34 @@ def create_app(config_name=None):
             print(f"[WARN] Scheduler failed: {e}", file=sys.stderr)
 
     return app
+
+
+def _check_and_migrate_schema():
+    """检查SQLite schema是否正确，若BigInteger列存在则重建表"""
+    from sqlalchemy import text, inspect
+
+    engine = db.engine
+    inspector = inspect(engine)
+
+    # 检查articles表是否存在且id列类型是否正确
+    needs_rebuild = False
+    if inspector.has_table("articles"):
+        columns = {col["name"]: col for col in inspector.get_columns("articles")}
+        id_col = columns.get("id")
+        if id_col:
+            col_type = str(id_col["type"]).upper()
+            # SQLite autoincrement需要INTEGER，不是BIGINT
+            if "BIGINT" in col_type or "BIG" in col_type:
+                needs_rebuild = True
+                print(f"[SCHEMA] articles.id is {col_type}, needs INTEGER. Rebuilding...", file=sys.stderr)
+
+    if needs_rebuild:
+        print("[SCHEMA] Dropping and recreating all tables...", file=sys.stderr)
+        db.drop_all()
+        db.create_all()
+        print("[SCHEMA] Schema rebuilt successfully!", file=sys.stderr)
+    else:
+        db.create_all()
 
 
 def _configure_scheduler(app):

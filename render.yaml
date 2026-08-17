@@ -1,0 +1,47 @@
+# Render Blueprint - GM China 新车舆情监控系统
+# 文档: https://render.com/docs/blueprint-spec
+services:
+  # 后端 Flask 服务
+  - type: web
+    name: gm-sentiment-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /api/dashboard/overview
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gm-sentiment-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 8000
+
+  # 前端 Vue 应用（静态站点）
+  - type: web
+    name: gm-sentiment-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install --registry=https://registry.npmmirror.com && npm run build
+    staticPublishPath: ./frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false  # 部署后手动设置为后端URL
+
+databases:
+  - name: gm-sentiment-db
+    plan: starter
+    databaseName: gm_sentiment
+    user: gm_app
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all (Render内部)

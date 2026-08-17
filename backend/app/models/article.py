@@ -5,7 +5,7 @@ from app.extensions import db
 class Article(db.Model):
     __tablename__ = "articles"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     source_id = db.Column(db.Integer, db.ForeignKey("data_sources.id"), nullable=False)
     brand_id = db.Column(db.Integer, db.ForeignKey("brands.id"))
     model_id = db.Column(db.Integer, db.ForeignKey("car_models.id"))
@@ -65,8 +65,8 @@ class Article(db.Model):
 class Comment(db.Model):
     __tablename__ = "comments"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    article_id = db.Column(db.BigInteger, db.ForeignKey("articles.id"), nullable=False)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    article_id = db.Column(db.Integer, db.ForeignKey("articles.id"), nullable=False)
     content = db.Column(db.Text, nullable=False)
     author = db.Column(db.String(100))
     publish_time = db.Column(db.DateTime)

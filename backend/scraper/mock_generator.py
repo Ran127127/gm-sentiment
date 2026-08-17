@@ -181,7 +181,8 @@ def generate_article(brand_name, model_info, source, sentiment_bias=None):
 
     # 随机选一个维度
     aspect_name = random.choice(list(ASPECTS.keys()))
-    aspect_desc = random.choice(ASPECTS[aspect_name][sentiment_bias])
+    aspect_key = sentiment_bias if sentiment_bias in ASPECTS[aspect_name] else "positive"
+    aspect_desc = random.choice(ASPECTS[aspect_name][aspect_key])
 
     title = title_template.format(
         brand=brand_name, model=model_name,

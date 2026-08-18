@@ -18,9 +18,5 @@ ENV PORT=8000
 
 EXPOSE ${PORT}
 
-CMD exec gunicorn \
-    -w 2 \
-    -b 0.0.0.0:${PORT} \
-    --timeout 120 \
-    --access-logfile - \
-    wsgi:app
+RUN chmod +x start.sh
+CMD ["./start.sh"]

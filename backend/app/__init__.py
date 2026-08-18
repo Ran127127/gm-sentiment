@@ -27,26 +27,8 @@ def create_app(config_name=None):
     # 确保数据库表已创建（开发环境）
     with app.app_context():
         db.create_all()
-        # Render免费层无持久磁盘，服务休眠唤醒后SQLite丢失，自动补充种子数据
-        _auto_seed_if_empty(app)
 
     return app
-
-
-def _auto_seed_if_empty(app):
-    """检测数据库为空时自动填充种子数据（应对Render免费层磁盘不持久）"""
-    try:
-        from app.models import Brand
-        if Brand.query.count() == 0:
-            print("[auto-seed] 数据库为空，自动填充种子数据...")
-            from seed_data import seed_brands, seed_data_sources, seed_mock_articles_lightweight, seed_daily_summaries
-            seed_brands()
-            seed_data_sources()
-            seed_mock_articles_lightweight(days=7)
-            seed_daily_summaries()
-            print("[auto-seed] 种子数据填充完成")
-    except Exception as e:
-        print(f"[auto-seed] 自动填充失败: {e}")
 
 
 def _configure_scheduler(app):

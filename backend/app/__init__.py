@@ -1,7 +1,5 @@
 import os
-import sys
-import traceback
-from flask import Flask, jsonify
+from flask import Flask
 from app.config import config_map
 from app.extensions import db, migrate, jwt, cors, scheduler
 
@@ -19,63 +17,36 @@ def create_app(config_name=None):
     jwt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
 
-    # 健康检查端点 —— 必须最先注册，确保快速响应
-    @app.route("/api/health")
-    def health_check():
-        return jsonify({"status": "ok", "config": config_name})
-
     # 注册蓝图
-    try:
-        from app.api import api_bp
-        app.register_blueprint(api_bp)
-    except Exception as e:
-        print(f"[ERROR] Failed to register blueprints: {e}", file=sys.stderr)
-        traceback.print_exc()
+    from app.api import api_bp
+    app.register_blueprint(api_bp)
 
-    # 数据库初始化（含schema迁移检查）
-    try:
-        with app.app_context():
-            _check_and_migrate_schema()
-    except Exception as e:
-        print(f"[ERROR] DB init failed: {e}", file=sys.stderr)
-        traceback.print_exc()
+    # 配置定时任务
+    _configure_scheduler(app)
 
-    # 调度器（仅开发环境启用）
-    if config_name == "development":
-        try:
-            _configure_scheduler(app)
-        except Exception as e:
-            print(f"[WARN] Scheduler failed: {e}", file=sys.stderr)
+    # 确保数据库表已创建（开发环境）
+    with app.app_context():
+        db.create_all()
+        # Render免费层无持久磁盘，服务休眠唤醒后SQLite丢失，自动补充种子数据
+        _auto_seed_if_empty(app)
 
     return app
 
 
-def _check_and_migrate_schema():
-    """检查SQLite schema是否正确，若BigInteger列存在则重建表"""
-    from sqlalchemy import text, inspect
-
-    engine = db.engine
-    inspector = inspect(engine)
-
-    # 检查articles表是否存在且id列类型是否正确
-    needs_rebuild = False
-    if inspector.has_table("articles"):
-        columns = {col["name"]: col for col in inspector.get_columns("articles")}
-        id_col = columns.get("id")
-        if id_col:
-            col_type = str(id_col["type"]).upper()
-            # SQLite autoincrement需要INTEGER，不是BIGINT
-            if "BIGINT" in col_type or "BIG" in col_type:
-                needs_rebuild = True
-                print(f"[SCHEMA] articles.id is {col_type}, needs INTEGER. Rebuilding...", file=sys.stderr)
-
-    if needs_rebuild:
-        print("[SCHEMA] Dropping and recreating all tables...", file=sys.stderr)
-        db.drop_all()
-        db.create_all()
-        print("[SCHEMA] Schema rebuilt successfully!", file=sys.stderr)
-    else:
-        db.create_all()
+def _auto_seed_if_empty(app):
+    """检测数据库为空时自动填充种子数据（应对Render免费层磁盘不持久）"""
+    try:
+        from app.models import Brand
+        if Brand.query.count() == 0:
+            print("[auto-seed] 数据库为空，自动填充种子数据...")
+            from seed_data import seed_brands, seed_data_sources, seed_mock_articles_lightweight, seed_daily_summaries
+            seed_brands()
+            seed_data_sources()
+            seed_mock_articles_lightweight(days=7)
+            seed_daily_summaries()
+            print("[auto-seed] 种子数据填充完成")
+    except Exception as e:
+        print(f"[auto-seed] 自动填充失败: {e}")
 
 
 def _configure_scheduler(app):
